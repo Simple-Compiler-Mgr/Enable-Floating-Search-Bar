@@ -1,0 +1,35 @@
+#!/sbin/sh
+##########################################################################################
+#
+# Magisk Module Template Install Script
+# by topjohnwu
+#
+##########################################################################################
+
+TMPDIR=/dev/tmp
+INSTALLER=$TMPDIR/install
+MAGISKBIN=/data/adb/magisk
+
+# Default permissions
+umask 022
+
+# Initial cleanup
+rm -rf $INSTALLER 2>/dev/null
+mkdir -p $INSTALLER
+
+# Extract utility functions
+unzip -oj "$3" module.prop install.sh 'common/*' -d $INSTALLER >&2
+
+# Load utility functions
+. $INSTALLER/util_functions.sh
+
+# Check for minimum magisk version
+MIN_VER=`grep_prop minMagisk $INSTALLER/module.prop`
+[ ! -z $MAGISK_VER_CODE -a $MAGISK_VER_CODE -ge $MIN_VER ] || require_new_magisk
+
+# Auto Mount
+$MAGISKBIN/magisk --mount-master
+
+# Install
+install_module
+exit 0

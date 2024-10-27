@@ -54,17 +54,17 @@ apply_settings() {
 apply_settings
 debug_info
 
-# 监听属性变化
+# 使用inotifywait监听系统设置变化
 while true
 do
+    inotifywait -e modify /data/system/users/0/settings_secure.xml
     CURRENT_STATE_1=\$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)
     CURRENT_STATE_2=\$(settings get secure launcher.enable_floating_search_bar)
     if [ "\$CURRENT_STATE_1" != "true" ] || [ "\$CURRENT_STATE_2" != "1" ]; then
-        log_message "检测到浮动搜索栏被关闭，正在重新启用"
+        log_message "检测到浮动搜索栏设置变化，正在重新启用"
         apply_settings
         debug_info
     fi
-    sleep 1
 done
 EOF
 

@@ -41,6 +41,7 @@ debug_info() {
     log_message "系统属性: \$(getprop sys.pixel_floating_search_bar)"
     log_message "最近活动: \$(dumpsys activity recents | grep 'Recent #0')"
     log_message "当前前台应用: \$(dumpsys activity | grep 'mResumedActivity')"
+    log_message "Launcher进程状态: \$(ps -ef | grep com.google.android.apps.nexuslauncher)"
 }
 
 apply_settings() {
@@ -54,10 +55,40 @@ apply_settings() {
 apply_settings
 debug_info
 
-# 使用inotifywait监听系统设置变化
+# 创建拦截脚本
+cat << EOF > $MODDIR/intercept.sh
+#!/system/bin/sh
+LD_PRELOAD=$MODDIR/libintercept.so \$@
+EOF
+chmod 755 $MODDIR/intercept.sh
+
+# 创建拦截库
+cat << EOF > $MODDIR/libintercept.c
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <stdio.h>
+#include <string.h>
+
+typedef int (*orig_settings_put_t)(const char*, const char*, const char*);
+
+int settings_put(const char* table, const char* key, const char* value) {
+    orig_settings_put_t orig_settings_put = dlsym(RTLD_NEXT, "settings_put");
+    
+    if (strcmp(table, "secure") == 0 && strcmp(key, "launcher.enable_floating_search_bar") == 0) {
+        return orig_settings_put(table, key, "1");
+    }
+    
+    return orig_settings_put(table, key, value);
+}
+EOF
+
+# 编译拦截库
+gcc -shared -fPIC $MODDIR/libintercept.c -o $MODDIR/libintercept.so -ldl
+
+# 持续监控并强制设置
 while true
 do
-    inotifywait -e modify /data/system/users/0/settings_secure.xml
+    enable_floating_search_bar
     CURRENT_STATE_1=\$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)
     CURRENT_STATE_2=\$(settings get secure launcher.enable_floating_search_bar)
     if [ "\$CURRENT_STATE_1" != "true" ] || [ "\$CURRENT_STATE_2" != "1" ]; then
@@ -65,6 +96,7 @@ do
         apply_settings
         debug_info
     fi
+    sleep 1
 done
 EOF
 

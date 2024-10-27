@@ -29,15 +29,18 @@ log_message() {
 
 enable_floating_search_bar() {
     device_config put launcher ENABLE_FLOATING_SEARCH_BAR true
+    settings put secure launcher.enable_floating_search_bar 1
     setprop persist.sys.pixel_floating_search_bar true
     log_message "启用浮动搜索栏"
 }
 
 debug_info() {
-    log_message "当前状态: \$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)"
+    log_message "当前状态 (device_config): \$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)"
+    log_message "当前状态 (settings): \$(settings get secure launcher.enable_floating_search_bar)"
     log_message "持久化属性: \$(getprop persist.sys.pixel_floating_search_bar)"
     log_message "系统属性: \$(getprop sys.pixel_floating_search_bar)"
     log_message "最近活动: \$(dumpsys activity recents | grep 'Recent #0')"
+    log_message "当前前台应用: \$(dumpsys activity | grep 'mResumedActivity')"
 }
 
 apply_settings() {
@@ -49,17 +52,19 @@ apply_settings() {
 
 # 在启动时应用设置
 apply_settings
+debug_info
 
 # 监听属性变化
 while true
 do
-    CURRENT_STATE=\$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)
-    if [ "\$CURRENT_STATE" != "true" ]; then
+    CURRENT_STATE_1=\$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)
+    CURRENT_STATE_2=\$(settings get secure launcher.enable_floating_search_bar)
+    if [ "\$CURRENT_STATE_1" != "true" ] || [ "\$CURRENT_STATE_2" != "1" ]; then
         log_message "检测到浮动搜索栏被关闭，正在重新启用"
         apply_settings
         debug_info
     fi
-    sleep 2
+    sleep 1
 done
 EOF
 
@@ -69,6 +74,7 @@ set_perm $MODDIR/service.sh 0 0 0755
 # 启用浮动搜索栏
 ui_print "- 正在启用浮动搜索栏..."
 device_config put launcher ENABLE_FLOATING_SEARCH_BAR true
+settings put secure launcher.enable_floating_search_bar 1
 setprop persist.sys.pixel_floating_search_bar true
 
 # 检查命令是否成功执行
@@ -89,3 +95,4 @@ ui_print "- 安装完成!"
 ui_print "- 服务已设置,将持续监控并保持浮动搜索栏启用状态"
 ui_print "作者B站:Simple Compiler"
 ui_print "- 请重启设备以使更改生效"
+ui_print "- 如果仍然遇到问题,请查看 $MODDIR/floating_search_bar.log 文件"

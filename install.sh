@@ -33,10 +33,18 @@ enable_floating_search_bar() {
     log_message "启用浮动搜索栏"
 }
 
+debug_info() {
+    log_message "当前状态: \$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)"
+    log_message "持久化属性: \$(getprop persist.sys.pixel_floating_search_bar)"
+    log_message "系统属性: \$(getprop sys.pixel_floating_search_bar)"
+    log_message "最近活动: \$(dumpsys activity recents | grep 'Recent #0')"
+}
+
 apply_settings() {
-    if [ "\$(getprop persist.sys.pixel_floating_search_bar)" = "true" ]; then
-        enable_floating_search_bar
-    fi
+    enable_floating_search_bar
+    am force-stop com.google.android.apps.nexuslauncher
+    am start -n com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+    log_message "重启启动器"
 }
 
 # 在启动时应用设置
@@ -48,9 +56,10 @@ do
     CURRENT_STATE=\$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)
     if [ "\$CURRENT_STATE" != "true" ]; then
         log_message "检测到浮动搜索栏被关闭，正在重新启用"
-        enable_floating_search_bar
+        apply_settings
+        debug_info
     fi
-    sleep 5
+    sleep 2
 done
 EOF
 

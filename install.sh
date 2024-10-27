@@ -29,27 +29,28 @@ log_message() {
 
 enable_floating_search_bar() {
     device_config put launcher ENABLE_FLOATING_SEARCH_BAR true
+    setprop persist.sys.pixel_floating_search_bar true
     log_message "启用浮动搜索栏"
 }
 
-restart_launcher() {
-    am force-stop com.google.android.apps.nexuslauncher
-    log_message "重启启动器"
+apply_settings() {
+    if [ "\$(getprop persist.sys.pixel_floating_search_bar)" = "true" ]; then
+        enable_floating_search_bar
+    fi
 }
 
-check_and_enable() {
+# 在启动时应用设置
+apply_settings
+
+# 监听属性变化
+while true
+do
     CURRENT_STATE=\$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)
     if [ "\$CURRENT_STATE" != "true" ]; then
         log_message "检测到浮动搜索栏被关闭，正在重新启用"
         enable_floating_search_bar
-        restart_launcher
     fi
-}
-
-while true
-do
-    check_and_enable
-    sleep 1
+    sleep 5
 done
 EOF
 
@@ -59,6 +60,7 @@ set_perm $MODDIR/service.sh 0 0 0755
 # 启用浮动搜索栏
 ui_print "- 正在启用浮动搜索栏..."
 device_config put launcher ENABLE_FLOATING_SEARCH_BAR true
+setprop persist.sys.pixel_floating_search_bar true
 
 # 检查命令是否成功执行
 if [ $? -eq 0 ]; then

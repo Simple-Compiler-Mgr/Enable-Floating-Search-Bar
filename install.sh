@@ -2,9 +2,33 @@
 
 MODDIR=${0%/*}
 
+# 添加错误检查函数
+check_error() {
+    if [ $? -ne 0 ]; then
+        ui_print "! Error: $1"
+        exit 1
+    fi
+}
+
+# 检查必要文件是否存在
+if [ ! -f "$MODDIR/module.prop" ]; then
+    ui_print "! Error: module.prop not found"
+    exit 1
+fi
+
 # 版本检查
-CURRENT_VERSION=$(grep_prop version $MODDIR/module.prop)
-CURRENT_VERSION_CODE=$(grep_prop versionCode $MODDIR/module.prop)
+CURRENT_VERSION=$(grep_prop version "$MODDIR/module.prop")
+check_error "Failed to read version"
+CURRENT_VERSION_CODE=$(grep_prop versionCode "$MODDIR/module.prop")
+check_error "Failed to read versionCode"
+
+# 检查是否成功获取到版本信息
+if [ -z "$CURRENT_VERSION" ] || [ -z "$CURRENT_VERSION_CODE" ]; then
+    ui_print "! Error: Failed to read version information"
+    ui_print "Version: $CURRENT_VERSION"
+    ui_print "Version Code: $CURRENT_VERSION_CODE"
+    exit 1
+fi
 
 # 兼容性警告
 ui_print "警告: 此模块仅适用于基于AOSP的类原生ROM或PixelUI"
@@ -18,96 +42,42 @@ ui_print "- 当前版本: $CURRENT_VERSION (版本代码: $CURRENT_VERSION_CODE)
 
 # 创建服务脚本
 ui_print "- 创建服务脚本..."
-cat << EOF > $MODDIR/service.sh
+if ! cat << 'EOF' > "$MODDIR/service.sh"
 #!/system/bin/sh
-
-LOG_FILE=$MODDIR/floating_search_bar.log
-
-log_message() {
-    echo "\$(date): \$1" >> \$LOG_FILE
-}
-
-enable_floating_search_bar() {
-    device_config put launcher ENABLE_FLOATING_SEARCH_BAR true
-    settings put secure launcher.enable_floating_search_bar 1
-    setprop persist.sys.pixel_floating_search_bar true
-    log_message "启用浮动搜索栏"
-}
-
-debug_info() {
-    log_message "当前状态 (device_config): \$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)"
-    log_message "当前状态 (settings): \$(settings get secure launcher.enable_floating_search_bar)"
-    log_message "持久化属性: \$(getprop persist.sys.pixel_floating_search_bar)"
-    log_message "系统属性: \$(getprop sys.pixel_floating_search_bar)"
-    log_message "最近活动: \$(dumpsys activity recents | grep 'Recent #0')"
-    log_message "当前前台应用: \$(dumpsys activity | grep 'mResumedActivity')"
-    log_message "Launcher进程状态: \$(ps -ef | grep com.google.android.apps.nexuslauncher)"
-}
-
-apply_settings() {
-    enable_floating_search_bar
-    am force-stop com.google.android.apps.nexuslauncher
-    am start -n com.google.android.apps.nexuslauncher/.NexusLauncherActivity
-    log_message "重启启动器"
-}
-
-# 在启动时应用设置
-apply_settings
-debug_info
-
-# 创建拦截脚本
-cat << EOF > $MODDIR/intercept.sh
-#!/system/bin/sh
-LD_PRELOAD=$MODDIR/libintercept.so \$@
-EOF
-chmod 755 $MODDIR/intercept.sh
-
-# 创建拦截库
-cat << EOF > $MODDIR/libintercept.c
-#define _GNU_SOURCE
-#include <dlfcn.h>
-#include <stdio.h>
-#include <string.h>
-
-typedef int (*orig_settings_put_t)(const char*, const char*, const char*);
-
-int settings_put(const char* table, const char* key, const char* value) {
-    orig_settings_put_t orig_settings_put = dlsym(RTLD_NEXT, "settings_put");
-    
-    if (strcmp(table, "secure") == 0 && strcmp(key, "launcher.enable_floating_search_bar") == 0) {
-        return orig_settings_put(table, key, "1");
-    }
-    
-    return orig_settings_put(table, key, value);
-}
-EOF
-
-# 编译拦截库
-gcc -shared -fPIC $MODDIR/libintercept.c -o $MODDIR/libintercept.so -ldl
 
 # 持续监控并强制设置
 while true
 do
-    enable_floating_search_bar
-    CURRENT_STATE_1=\$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)
-    CURRENT_STATE_2=\$(settings get secure launcher.enable_floating_search_bar)
-    if [ "\$CURRENT_STATE_1" != "true" ] || [ "\$CURRENT_STATE_2" != "1" ]; then
-        log_message "检测到浮动搜索栏设置变化，正在重新启用"
-        apply_settings
-        debug_info
+    # 启用浮动搜索栏
+    device_config put launcher ENABLE_FLOATING_SEARCH_BAR true
+    settings put secure launcher.enable_floating_search_bar 1
+    
+    # 检查当前状态
+    CURRENT_STATE_1=$(device_config get launcher ENABLE_FLOATING_SEARCH_BAR)
+    CURRENT_STATE_2=$(settings get secure launcher.enable_floating_search_bar)
+    
+    # 如果状态不正确，重启启动器
+    if [ "$CURRENT_STATE_1" != "true" ] || [ "$CURRENT_STATE_2" != "1" ]; then
+        am force-stop com.google.android.apps.nexuslauncher
+        am start -n com.google.android.apps.nexuslauncher/.NexusLauncherActivity
     fi
+    
     sleep 1
-done
+done &
 EOF
+then
+    ui_print "! Error: Failed to create service.sh"
+    exit 1
+fi
 
 # 设置服务脚本权限
-set_perm $MODDIR/service.sh 0 0 0755
+set_perm "$MODDIR/service.sh" 0 0 0755
+check_error "Failed to set service.sh permissions"
 
 # 启用浮动搜索栏
 ui_print "- 正在启用浮动搜索栏..."
 device_config put launcher ENABLE_FLOATING_SEARCH_BAR true
 settings put secure launcher.enable_floating_search_bar 1
-setprop persist.sys.pixel_floating_search_bar true
 
 # 检查命令是否成功执行
 if [ $? -eq 0 ]; then
@@ -117,14 +87,15 @@ else
 fi
 
 # 创建一个标记文件,表示模块已安装
-touch $MODDIR/module_installed
+touch "$MODDIR/module_installed"
+check_error "Failed to create module_installed file"
 
 # 设置权限
-set_perm_recursive $MODDIR 0 0 0755 0644
+set_perm_recursive "$MODDIR" 0 0 0755 0644
+check_error "Failed to set directory permissions"
 
 # 安装完成
 ui_print "- 安装完成!"
-ui_print "- 服务已设置,将持续监控并保持浮动搜索栏启用状态"
+ui_print "- 服务已设置,将在系统启动后持续监控并保持浮动搜索栏启用状态"
 ui_print "作者B站:Simple Compiler"
 ui_print "- 请重启设备以使更改生效"
-ui_print "- 如果仍然遇到问题,请查看 $MODDIR/floating_search_bar.log 文件"

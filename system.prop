@@ -1,3 +1,0 @@
-# 启用浮动搜索栏的系统属性
-launcher.enable_floating_search_bar=1
-persist.sys.pixel_floating_search_bar=true

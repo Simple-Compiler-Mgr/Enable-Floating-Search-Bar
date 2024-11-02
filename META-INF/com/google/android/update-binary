@@ -18,7 +18,7 @@ rm -rf $INSTALLER 2>/dev/null
 mkdir -p $INSTALLER
 
 # Extract utility functions
-unzip -oj "$3" module.prop install.sh 'common/*' -d $INSTALLER >&2
+unzip -o "$3" module.prop install.sh service.sh -d $INSTALLER >&2
 
 # Load utility functions
 . $INSTALLER/util_functions.sh
